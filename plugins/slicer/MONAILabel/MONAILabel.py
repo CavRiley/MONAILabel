@@ -1294,11 +1294,26 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             node_name = sample.get("PatientID", sample.get("name", image_id))
             checksum = sample.get("checksum")
             local_exists = image_file and os.path.exists(image_file)
+            multichannel: bool = bool(sample.get("multichannel", False))
 
             logging.info(f"Check if file exists/shared locally: {image_file} => {local_exists}")
             if local_exists:
-                self._volumeNode = slicer.util.loadVolume(image_file)
-                self._volumeNode.SetName(node_name)
+                if multichannel:
+                    # For 4D multichannel images, NOTE: slicer does not like 4D nifti images
+                    # from https://github.com/Project-MONAI/MONAILabel/issues/241#issuecomment-1497788857
+                    volumeSequenceNode = slicer.util.loadSequence(image_file)
+                    volumeSequenceNode.SetName(node_name)
+                    # Get a volume node
+                    browserNode = slicer.modules.sequences.logic().GetFirstBrowserNodeForSequenceNode(
+                        volumeSequenceNode
+                    )
+                    browserNode.SetOverwriteProxyName(
+                        None, True
+                    )  # set the proxy node name based on the sequence node name
+                    self._volumeNode = browserNode.GetProxyNode(volumeSequenceNode)
+                else:
+                    self._volumeNode = slicer.util.loadVolume(image_file)
+                    self._volumeNode.SetName(node_name)
             else:
                 download_uri = f"{self.serverUrl()}/datastore/image?image={quote_plus(image_id)}"
                 logging.info(download_uri)
