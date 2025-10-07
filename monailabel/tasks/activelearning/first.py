@@ -36,4 +36,4 @@ class First(Strategy):
         image = images[0]
 
         logger.info(f"First: Selected Image: {image}")
-        return {"id": image}
+        return {"id": image} if not datastore.get_is_multichannel() else {"id": image, "multichannel": True}

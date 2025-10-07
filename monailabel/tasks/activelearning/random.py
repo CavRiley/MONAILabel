@@ -45,4 +45,8 @@ class Random(Strategy):
         image = random.choices(images, weights=weights)[0]
         logger.debug(f"Random: Images: {images}; Weight: {weights}")
         logger.info(f"Random: Selected Image: {image}; Weight: {weights[0]}")
-        return {"id": image, "weight": weights[0]}
+        return (
+            {"id": image, "weight": weights[0]}
+            if not datastore.get_is_multichannel()
+            else {"id": image, "weight": weights[0], "multichannel": True}
+        )
