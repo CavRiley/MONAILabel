@@ -10,6 +10,7 @@
 # limitations under the License.
 import copy
 import logging
+import os
 from typing import Any, Dict, Hashable, Mapping
 
 import numpy as np
@@ -17,13 +18,99 @@ import torch
 from monai.config import KeysCollection, NdarrayOrTensor
 from monai.data import MetaTensor
 from monai.networks.layers import GaussianFilter
-from monai.transforms import CropForeground, GaussianSmooth, Randomizable, Resize, ScaleIntensity, SpatialCrop
+from monai.transforms import (
+    CropForeground,
+    EnsureChannelFirst,
+    GaussianSmooth,
+    LoadImage,
+    Randomizable,
+    Resize,
+    ScaleIntensity,
+    Spacing,
+    SpatialCrop,
+ConcatItemsd
+)
 from monai.transforms.transform import MapTransform, Transform
 from monai.utils.enums import CommonKeys
 
 LABELS_KEY = "label_names"
 
 logger = logging.getLogger(__name__)
+
+
+# Adapted from https://github.com/Project-MONAI/MONAILabel/issues/241#issuecomment-1497561538
+class LoadDirectoryImagesd(MapTransform):
+    """
+    Load all 3D images from a directory, stack them along a new axis,
+    and preserve MONAI-style metadata similar to LoadImaged.
+
+    - Each key should be a directory path.
+    - Assumes all images share the same spatial dimensions.
+    - Stores image data in `d[key]` and metadata in `d[f"{key}_meta_dict"]`.
+    """
+
+    def __init__(self, keys: KeysCollection, target_spacing=None, allow_missing_keys: bool = False, channels: int = 2):
+        super().__init__(keys, allow_missing_keys)
+        self.target_spacing = target_spacing
+        self.loader = LoadImage(reader="ITKReader", image_only=False)
+        self.ensure_channel_first = EnsureChannelFirst()
+        self.spacer = Spacing(pixdim=self.target_spacing, mode="bilinear") if target_spacing else None
+        self.resizer = None  # initialized later
+        self.channels = int(channels)
+
+    def __call__(self, data: Dict):
+        d = dict(data)
+
+        for key in self.key_iterator(d):
+            dir_path = d[key]
+            if not os.path.isdir(dir_path):
+                raise ValueError(f"Expected a directory path for key '{key}', got: {dir_path}")
+
+            # Gather all files in directory
+            image_files = sorted(
+                [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.lower().endswith((".nii", ".nii.gz", ".nrrd"))]
+            )
+            if not image_files:
+                raise FileNotFoundError(f"No NIfTI images found in directory {dir_path}")
+
+            all_arrays = []
+            meta_dicts = []
+
+            for idx, img_path in enumerate(image_files):
+                img, meta = self.loader(img_path)  # (ndarray, dict) TODO: check this actually returns metadata
+                img = self.ensure_channel_first(img)
+
+                # ensure 3D spatial shape
+                if img.ndim == 3:  # (C,H,W) → add a singleton depth
+                    img = img[..., None]  # (C,H,W,1)
+
+                if self.spacer:
+                    img = self.spacer(img)
+                if self.resizer is None:
+                    self.resizer = Resize(spatial_size=img.shape[1:], mode='bilinear')
+                img = self.resizer(img)
+                all_arrays.append(img)
+                meta_dicts.append(meta)
+                logger.debug(f"Loaded image {idx+1}/{len(image_files)}: {img_path}")
+
+            assert len(all_arrays) == self.channels, "ERROR: number of stacked images does not equal channels"
+
+            # Stack into (num_images, H, W, D)
+            stacked = np.stack([a[0] for a in all_arrays], axis=0).astype(np.float32)
+
+            # Use first image’s metadata as base
+            merged_meta = copy.deepcopy(meta_dicts[0])
+            merged_meta["filename_or_obj"] = image_files
+            merged_meta["num_images"] = len(image_files)
+            merged_meta["original_channel_dim"] = 0
+            merged_meta["dim"] = len(stacked.shape)
+
+            d[key] = stacked
+            d[f"{key}_meta_dict"] = merged_meta
+
+            logger.info(f"Stacked {len(image_files)} images -> shape {stacked.shape}")
+
+        return d
 
 
 class BinaryMaskd(MapTransform):
