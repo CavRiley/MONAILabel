@@ -91,6 +91,8 @@ class MONAILabelApp:
         self.studies = studies
         self.conf = conf if conf else {}
         self.multichannel = conf.get("multichannel", False)
+        self.multi_file = conf.get("multi_file", False)
+        self.input_channels = conf.get("input_channels", False)
         self.name = name
         self.description = description
         self.version = version
@@ -143,6 +145,7 @@ class MONAILabelApp:
             auto_reload=settings.MONAI_LABEL_DATASTORE_AUTO_RELOAD,
             read_only=settings.MONAI_LABEL_DATASTORE_READ_ONLY,
             multichannel=self.multichannel,
+            multi_file=self.multi_file,
         )
 
     def init_remote_datastore(self) -> Datastore:

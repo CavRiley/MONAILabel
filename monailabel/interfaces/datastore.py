@@ -201,6 +201,19 @@ class Datastore(metaclass=ABCMeta):
         """
         pass
 
+    # TODO: look into implementing for all datastore children and make abstract
+    # @abstractmethod
+    def add_directory(self, id: str, filename: str, info: Dict[str, Any]) -> str:
+        """
+        Save a directory for the given directory id and return the newly saved directory's id
+
+        :param id: the directory id for the image;  If None then base filename will be used
+        :param filename: the path to the directory
+        :param info: additional info for the directory
+        :return: the directory id for the saved image filename
+        """
+        pass
+
     @abstractmethod
     def add_image(self, image_id: str, image_filename: str, image_info: Dict[str, Any]) -> str:
         """
@@ -280,9 +293,18 @@ class Datastore(metaclass=ABCMeta):
         """
         pass
 
-    @abstractmethod
+    # TODO: look into implementing for all datastore children and make abstract
+    # @abstractmethod
     def get_is_multichannel(self) -> bool:
         """
         Returns whether the application's studies is directed at multichannel (4D) data
+        """
+        pass
+
+    # TODO: look into implementing for all datastore children and make abstract
+    # @abstractmethod
+    def get_is_multi_file(self) -> bool:
+        """
+        Returns whether the application's studies is directed at directories containing multiple images per sample
         """
         pass

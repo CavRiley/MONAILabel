@@ -68,7 +68,7 @@ def add_image(
     logger.info(f"Image: {image}; File: {file}; params: {params}")
     file_ext = "".join(pathlib.Path(file.filename).suffixes) if file.filename else ".nii.gz"
 
-    image_id = image if image else os.path.basename(file.filename).replace(file_ext, "")
+    id = image if image else os.path.basename(file.filename).replace(file_ext, "")
     image_file = tempfile.NamedTemporaryFile(suffix=file_ext).name
 
     with open(image_file, "wb") as buffer:
@@ -79,8 +79,12 @@ def add_image(
     save_params: Dict[str, Any] = json.loads(params) if params else {}
     if user:
         save_params["user"] = user
-    image_id = instance.datastore().add_image(image_id, image_file, save_params)
-    return {"image": image_id}
+    if not instance.datastore().get_is_multi_file():
+        image_id = instance.datastore().add_image(id, image_file, save_params)
+        return {"image": image_id}
+    else:
+        directory_id = instance.datastore().add_directory(id, image_file, save_params)
+        return {"image": directory_id}
 
 
 def remove_image(id: str, user: Optional[str] = None):
