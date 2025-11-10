@@ -11,8 +11,9 @@
 
 import logging
 
+import numpy as np
 import torch
-from lib.transforms.transforms import NormalizeLabelsInDatasetd
+from lib.transforms.transforms import LoadDirectoryImagesd, NormalizeLabelsInDatasetd
 from monai.handlers import TensorBoardImageHandler, from_engine
 from monai.inferers import SlidingWindowInferer
 from monai.losses import DiceCELoss
@@ -27,6 +28,7 @@ from monai.transforms import (
     NormalizeIntensityd,
     Orientationd,
     RandSpatialCropd,
+    Resized,
     ScaleIntensityd,
     SelectItemsd,
     Spacingd,
@@ -63,6 +65,12 @@ class Segmentation(BasicTrainTask):
 
     def loss_function(self, context: Context):
         return DiceCELoss(to_onehot_y=True, softmax=True)
+        # return DiceCELoss(
+        #                     # sigmoid=True,        # multilabel
+        #                     softmax=True,
+        #                     to_onehot_y=True,   # target is already 3-channel
+        #                     include_background=False  # no bg channel in multilabel
+        #                 )
 
     def lr_scheduler_handler(self, context: Context):
         return None
@@ -71,14 +79,17 @@ class Segmentation(BasicTrainTask):
         return super().train_data_loader(context, num_workers, True)
 
     def train_pre_transforms(self, context: Context):
+        channels = context.input_channels
         return [
-            LoadImaged(keys=("image", "label"), reader="ITKReader"),
+            # LoadImaged(keys=("image", "label"), reader="ITKReader", ensure_channel_first=True),
+            LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
+            LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True) if context.multi_file is False else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
             NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
-            EnsureChannelFirstd(keys=("image", "label")),
+            EnsureChannelFirstd(keys=("image", "label"), channel_dim=0),
             EnsureTyped(keys=("image", "label"), device=context.device),
             Orientationd(keys=("image", "label"), axcodes="RAS"),
             Spacingd(keys=("image", "label"), pixdim=self.target_spacing, mode=("bilinear", "nearest")),
-            NormalizeIntensityd(keys="image", nonzero=True),
+            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             CropForegroundd(
                 keys=("image", "label"),
                 source_key="image",
@@ -86,7 +97,7 @@ class Segmentation(BasicTrainTask):
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
             GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
+            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
             RandSpatialCropd(
                 keys=["image", "label"],
                 roi_size=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
@@ -107,23 +118,26 @@ class Segmentation(BasicTrainTask):
         ]
 
     def val_pre_transforms(self, context: Context):
+        channels = context.input_channels
         return [
-            LoadImaged(keys=("image", "label"), reader="ITKReader"),
+            # LoadImaged(keys=("image", "label"), reader="ITKReader", ensure_channel_first=True),
+            LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
+            LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True) if context.multi_file is False else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
             NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
             EnsureTyped(keys=("image", "label")),
-            EnsureChannelFirstd(keys=("image", "label")),
+            EnsureChannelFirstd(keys=("image", "label"), channel_dim=0),
             Orientationd(keys=("image", "label"), axcodes="RAS"),
             Spacingd(keys=("image", "label"), pixdim=self.target_spacing, mode=("bilinear", "nearest")),
-            NormalizeIntensityd(keys="image", nonzero=True),
+            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             # ScaleIntensityRanged(keys="image", a_min=-1000, a_max=1900, b_min=0.0, b_max=1.0, clip=True),
             CropForegroundd(
                 keys=("image", "label"),
-                source_key="label",
+                source_key="image",
                 margin=10,
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
             GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
+            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
             SelectItemsd(keys=("image", "label")),
         ]
 

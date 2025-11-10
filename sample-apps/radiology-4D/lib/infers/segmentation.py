@@ -8,10 +8,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import logging
 from typing import Callable, Sequence
 
-from lib.transforms.transforms import GetCentroidsd
+from lib.transforms.transforms import GetCentroidsd, LoadDirectoryImagesd
 from monai.inferers import Inferer, SlidingWindowInferer
 from monai.transforms import (
     Activationsd,
@@ -61,15 +61,20 @@ class Segmentation(BasicInferTask):
         self.target_spacing = target_spacing
 
     def pre_transforms(self, data=None) -> Sequence[Callable]:
+        channels = data.get("input_channels", 1)
         t = [
-            LoadImaged(keys="image", reader="ITKReader"),
+            (
+                LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
+                if data.get("multi_file", False) is False
+                else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels)
+            ),
             EnsureTyped(keys="image", device=data.get("device") if data else None),
-            EnsureChannelFirstd(keys="image"),
+            EnsureChannelFirstd(keys="image", channel_dim=0),
             Orientationd(keys="image", axcodes="RAS"),
             Spacingd(keys="image", pixdim=self.target_spacing, allow_missing_keys=True),
-            NormalizeIntensityd(keys="image", nonzero=True),
+            NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
             GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0),
+            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
         ]
         return t
 
@@ -100,6 +105,7 @@ class Segmentation(BasicInferTask):
                     keys="pred",
                     ref_image="image",
                     config_labels=self.labels if data.get("restore_label_idx", False) else None,
+                    # invert_orient=True,
                 ),
                 GetCentroidsd(keys="pred", centroids_key="centroids"),
             ]

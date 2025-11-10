@@ -1288,13 +1288,14 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 return
 
             logging.info(sample)
-            image_id = sample["id"]
+            id = sample["id"]
             image_file = sample.get("path")
-            image_name = sample.get("name", image_id)
-            node_name = sample.get("PatientID", sample.get("name", image_id))
+            image_name = sample.get("name", id)
+            node_name = sample.get("PatientID", sample.get("name", id))
             checksum = sample.get("checksum")
             local_exists = image_file and os.path.exists(image_file)
             multichannel: bool = bool(sample.get("multichannel", False))
+            multi_file: bool = bool(sample.get("multi_file", False))
 
             logging.info(f"Check if file exists/shared locally: {image_file} => {local_exists}")
             if local_exists:
@@ -1312,10 +1313,32 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     )  # set the proxy node name based on the sequence node name
                     self._volumeNode = browserNode.GetProxyNode(volumeSequenceNode)
                 else:
-                    self._volumeNode = slicer.util.loadVolume(image_file)
-                    self._volumeNode.SetName(node_name)
+                    if not multi_file:
+                        self._volumeNode = slicer.util.loadVolume(image_file)
+                        self._volumeNode.SetName(node_name)
+                    else:  # in the case the underlying dataset is multi_file, we load all the images in the directory
+                        dir_path = image_file
+                        if not os.path.isdir(dir_path):
+                            raise ValueError(f"multi_file=True but path is not a directory: {dir_path}")
+
+                        # get valid image paths
+                        entries = sorted(os.listdir(dir_path))
+                        image_paths = []
+                        for name in entries:
+                            full_path = os.path.join(dir_path, name)
+                            if os.path.isfile(full_path):
+                                image_paths.append(full_path)
+
+                        nodes = []
+                        for idx, image in enumerate(image_paths):
+                            image_base_name = os.path.basename(image)
+                            node = slicer.util.loadVolume(image)
+                            node.SetName(image_base_name)
+                            nodes.append(node)
+
+                        self._volumeNode = nodes[0]
             else:
-                download_uri = f"{self.serverUrl()}/datastore/image?image={quote_plus(image_id)}"
+                download_uri = f"{self.serverUrl()}/datastore/image?image={quote_plus(id)}"
                 logging.info(download_uri)
 
                 sampleDataLogic = SampleData.SampleDataLogic()
@@ -1326,7 +1349,7 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if slicer.util.settingsValue("MONAILabel/originalLabel", True, converter=slicer.util.toBool):
                 try:
                     datastore = self.logic.datastore()
-                    label_info = datastore["objects"][image_id]["labels"]["original"]["info"]
+                    label_info = datastore["objects"][id]["labels"]["original"]["info"]
                     labels = label_info.get("params", {}).get("label_names", {})
 
                     if labels:
@@ -1338,7 +1361,7 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         labels = self.logic.info().get("labels")
 
                     # ext = datastore['objects'][image_id]['labels']['original']['ext']
-                    maskFile = self.logic.download_label(image_id, "original")
+                    maskFile = self.logic.download_label(id, "original")
                     self.updateSegmentationMask(maskFile, list(labels))
                     print("Original label uploaded! ")
 

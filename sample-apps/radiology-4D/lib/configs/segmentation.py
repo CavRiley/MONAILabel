@@ -40,7 +40,6 @@ class Segmentation(TaskConfig):
             if conf_labels
             else {
                 "lesion": 1,
-                "background": 0,
                 # "spleen": 1,
                 # "kidney_right": 2,
                 # "kidney_left": 3,
@@ -99,7 +98,7 @@ class Segmentation(TaskConfig):
         self.network = SegResNet(
             spatial_dims=3,
             in_channels=input_channels,
-            out_channels=len(self.labels),  # labels plus background,
+            out_channels=len(self.labels) + 1,  # labels plus background,
             init_filters=32,
             blocks_down=(1, 2, 2, 4),
             blocks_up=(1, 1, 1),

@@ -281,6 +281,10 @@ class MONAILabelApp:
                 f"Inference Task is not Initialized. There is no model '{model}' available",
             )
 
+        request["multi_file"] = self.multi_file
+        request["multichannel"] = self.multichannel
+        request["input_channels"] = self.input_channels
+
         request = copy.deepcopy(request)
         request["description"] = task.description
 
@@ -422,6 +426,11 @@ class MONAILabelApp:
                 MONAILabelError.INVALID_INPUT,
                 f"Train Task is not Initialized. There is no model '{model}' available; {request}",
             )
+
+        # 4D image support, send train task information regarding data
+        request["multi_file"] = self.multi_file
+        request["multichannel"] = self.multichannel
+        request["input_channels"] = self.input_channels
 
         request = copy.deepcopy(request)
         result = task(request, self.datastore())
