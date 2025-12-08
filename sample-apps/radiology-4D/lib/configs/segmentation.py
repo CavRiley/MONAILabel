@@ -39,7 +39,8 @@ class Segmentation(TaskConfig):
             {label: idx for idx, label in enumerate(conf_labels.split(","), start=1)}
             if conf_labels
             else {
-                "lesion": 1,
+                "prostate": 1,
+                # "background": 0
                 # "spleen": 1,
                 # "kidney_right": 2,
                 # "kidney_left": 3,
@@ -86,19 +87,19 @@ class Segmentation(TaskConfig):
 
         self.target_spacing = (1.5, 1.5, 1.5)  # target space for image
         # Setting ROI size - This is for the image padding
-        self.roi_size = (96, 96, 96)
+        self.roi_size = (112, 112, 112)
 
         try:
             input_channels = int(self.conf.get("input_channels", 1))
         except ValueError or TypeError as e:
-            logger.debug(f"Error when converting input channels, setting to 1")
+            logger.debug("Error when converting input channels, setting to 1")
             input_channels = 1
 
         # Network
         self.network = SegResNet(
             spatial_dims=3,
             in_channels=input_channels,
-            out_channels=len(self.labels) + 1,  # labels plus background,
+            out_channels=len(self.labels)+1,  # labels plus background,
             init_filters=32,
             blocks_down=(1, 2, 2, 4),
             blocks_up=(1, 1, 1),

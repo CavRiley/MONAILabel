@@ -102,7 +102,7 @@ class LocalDatastore(Datastore):
         images_dir: str = ".",
         labels_dir: str = "labels",
         datastore_config: str = "datastore_v2.json",
-        extensions=("*.nii.gz", "*.nii"),
+        extensions=("*.nii.gz", "*.nii", "*.nrrd"),
         auto_reload=False,
         read_only=False,
         multichannel=False,

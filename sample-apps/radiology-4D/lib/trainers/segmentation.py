@@ -32,6 +32,9 @@ from monai.transforms import (
     ScaleIntensityd,
     SelectItemsd,
     Spacingd,
+    ConcatItemsd,
+    CenterSpatialCropd,
+    ScaleIntensityRangePercentilesd,
 )
 
 from monailabel.tasks.train.basic_train import BasicTrainTask, Context
@@ -64,7 +67,7 @@ class Segmentation(BasicTrainTask):
         return torch.optim.AdamW(context.network.parameters(), lr=1e-4, weight_decay=1e-5)
 
     def loss_function(self, context: Context):
-        return DiceCELoss(to_onehot_y=True, softmax=True)
+        return DiceCELoss(to_onehot_y=True, softmax=True)  #, include_background=False)
         # return DiceCELoss(
         #                     # sigmoid=True,        # multilabel
         #                     softmax=True,
@@ -83,7 +86,11 @@ class Segmentation(BasicTrainTask):
         return [
             # LoadImaged(keys=("image", "label"), reader="ITKReader", ensure_channel_first=True),
             LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
-            LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True) if context.multi_file is False else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
+            (
+                LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
+                if context.multi_file is False
+                else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels)
+            ),
             NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
             EnsureChannelFirstd(keys=("image", "label"), channel_dim=0),
             EnsureTyped(keys=("image", "label"), device=context.device),
@@ -96,14 +103,20 @@ class Segmentation(BasicTrainTask):
                 margin=10,
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
-            GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
-            RandSpatialCropd(
+            ScaleIntensityRangePercentilesd(
+                keys="image",
+                lower=2.0,
+                upper=98.0,
+                b_min=-1.0,
+                b_max=1.0,
+                clip=False,
+                relative=False,
+                channel_wise=True
+            ),
+            CenterSpatialCropd(
                 keys=["image", "label"],
                 roi_size=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
-                random_size=False,
             ),
-            SelectItemsd(keys=("image", "label")),
         ]
 
     def train_post_transforms(self, context: Context):
@@ -122,7 +135,11 @@ class Segmentation(BasicTrainTask):
         return [
             # LoadImaged(keys=("image", "label"), reader="ITKReader", ensure_channel_first=True),
             LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
-            LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True) if context.multi_file is False else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
+            (
+                LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
+                if context.multi_file is False
+                else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels)
+            ),
             NormalizeLabelsInDatasetd(keys="label", label_names=self._labels),  # Specially for missing labels
             EnsureTyped(keys=("image", "label")),
             EnsureChannelFirstd(keys=("image", "label"), channel_dim=0),
@@ -136,9 +153,21 @@ class Segmentation(BasicTrainTask):
                 margin=10,
                 k_divisible=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
             ),
-            GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
-            SelectItemsd(keys=("image", "label")),
+
+            ScaleIntensityRangePercentilesd(
+                keys=image_keys,
+                lower=2.0,
+                upper=98.0,
+                b_min=-1.0,
+                b_max=1.0,
+                clip=False,
+                relative=False,
+                channel_wise=True
+            ),
+            CenterSpatialCropd(
+                keys=["image", "label"],
+                roi_size=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
+            ),
         ]
 
     def val_inferer(self, context: Context):

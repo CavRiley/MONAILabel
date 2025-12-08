@@ -19,6 +19,7 @@ from monai.config import KeysCollection, NdarrayOrTensor
 from monai.data import MetaTensor
 from monai.networks.layers import GaussianFilter
 from monai.transforms import (
+    ConcatItemsd,
     CropForeground,
     EnsureChannelFirst,
     GaussianSmooth,
@@ -28,7 +29,6 @@ from monai.transforms import (
     ScaleIntensity,
     Spacing,
     SpatialCrop,
-ConcatItemsd
 )
 from monai.transforms.transform import MapTransform, Transform
 from monai.utils.enums import CommonKeys
@@ -68,47 +68,56 @@ class LoadDirectoryImagesd(MapTransform):
 
             # Gather all files in directory
             image_files = sorted(
-                [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.lower().endswith((".nii", ".nii.gz", ".nrrd"))]
+                [
+                    os.path.join(dir_path, f)
+                    for f in os.listdir(dir_path)
+                    if f.lower().endswith((".nii", ".nii.gz", ".nrrd"))
+                ]
             )
             if not image_files:
                 raise FileNotFoundError(f"No NIfTI images found in directory {dir_path}")
 
-            all_arrays = []
+            channel_keys = []
             meta_dicts = []
 
+            logger.info(f"Loading {len(image_files)} images from {dir_path}")
+
             for idx, img_path in enumerate(image_files):
-                img, meta = self.loader(img_path)  # (ndarray, dict) TODO: check this actually returns metadata
+                img, meta = self.loader(img_path)
                 img = self.ensure_channel_first(img)
 
-                # ensure 3D spatial shape
-                if img.ndim == 3:  # (C,H,W) → add a singleton depth
-                    img = img[..., None]  # (C,H,W,1)
-
-                if self.spacer:
-                    img = self.spacer(img)
                 if self.resizer is None:
                     self.resizer = Resize(spatial_size=img.shape[1:], mode='bilinear')
+
                 img = self.resizer(img)
-                all_arrays.append(img)
+
+                ch_key = f"{key}_ch{idx + 1}"
+                d[ch_key] = img
+                d[f"{ch_key}_meta_dict"] = meta
+
+                channel_keys.append(ch_key)
                 meta_dicts.append(meta)
-                logger.debug(f"Loaded image {idx+1}/{len(image_files)}: {img_path}")
 
-            assert len(all_arrays) == self.channels, "ERROR: number of stacked images does not equal channels"
+                logger.debug(f"Loaded {ch_key}: {img.shape}")
 
-            # Stack into (num_images, H, W, D)
-            stacked = np.stack([a[0] for a in all_arrays], axis=0).astype(np.float32)
+            # MONAI-native concatenation
+            self.concat = ConcatItemsd(keys=channel_keys, name=key, dim=0)
+            d = self.concat(d)
 
-            # Use first image’s metadata as base
+            # Clean up temporary channel keys
+            for ch_key in channel_keys:
+                d.pop(ch_key, None)
+                d.pop(f"{ch_key}_meta_dict", None)
+
+            # Construct merged metadata
             merged_meta = copy.deepcopy(meta_dicts[0])
             merged_meta["filename_or_obj"] = image_files
-            merged_meta["num_images"] = len(image_files)
+            merged_meta["num_channels"] = len(channel_keys)
             merged_meta["original_channel_dim"] = 0
-            merged_meta["dim"] = len(stacked.shape)
 
-            d[key] = stacked
             d[f"{key}_meta_dict"] = merged_meta
 
-            logger.info(f"Stacked {len(image_files)} images -> shape {stacked.shape}")
+            logger.info(f"Concatenated {len(channel_keys)} images → {d[key].shape}")
 
         return d
 

@@ -8,7 +8,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 from typing import Callable, Sequence
 
 from lib.transforms.transforms import GetCentroidsd, LoadDirectoryImagesd
@@ -25,6 +24,8 @@ from monai.transforms import (
     Orientationd,
     ScaleIntensityd,
     Spacingd,
+    ScaleIntensityRangePercentilesd,
+    CenterSpatialCropd
 )
 
 from monailabel.interfaces.tasks.infer_v2 import InferType
@@ -73,8 +74,20 @@ class Segmentation(BasicInferTask):
             Orientationd(keys="image", axcodes="RAS"),
             Spacingd(keys="image", pixdim=self.target_spacing, allow_missing_keys=True),
             NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-            GaussianSmoothd(keys="image", sigma=0.4),
-            ScaleIntensityd(keys="image", minv=-1.0, maxv=1.0, channel_wise=True),
+            ScaleIntensityRangePercentilesd(
+                keys="image",
+                lower=2.0,
+                upper=98.0,
+                b_min=-1.0,
+                b_max=1.0,
+                clip=False,
+                relative = False,
+                channel_wise=True
+            ),
+            CenterSpatialCropd(
+                keys=["image"],
+                roi_size=[self.roi_size[0], self.roi_size[1], self.roi_size[2]],
+            ),
         ]
         return t
 
