@@ -279,3 +279,19 @@ class Datastore(metaclass=ABCMeta):
         Return json representation of datastore
         """
         pass
+
+    # TODO: look into implementing for all datastore children and make abstract
+    # @abstractmethod
+    def get_is_multichannel(self) -> bool:
+        """
+        Returns whether the application's studies is directed at multichannel (4D) data
+        """
+        pass
+
+    # TODO: look into implementing for all datastore children and make abstract
+    # @abstractmethod
+    def get_is_multi_file(self) -> bool:
+        """
+        Returns whether the application's studies is directed at directories containing multiple images per sample
+        """
+        pass

@@ -90,7 +90,9 @@ class MONAILabelApp:
         self.app_dir = app_dir
         self.studies = studies
         self.conf = conf if conf else {}
-
+        self.multichannel = conf.get("multichannel", False)
+        self.multi_file = conf.get("multi_file", False)
+        self.input_channels = conf.get("input_channels", False)
         self.name = name
         self.description = description
         self.version = version
@@ -146,6 +148,8 @@ class MONAILabelApp:
             extensions=settings.MONAI_LABEL_DATASTORE_FILE_EXT,
             auto_reload=settings.MONAI_LABEL_DATASTORE_AUTO_RELOAD,
             read_only=settings.MONAI_LABEL_DATASTORE_READ_ONLY,
+            multichannel=self.multichannel,
+            multi_file=self.multi_file,
         )
 
     def init_remote_datastore(self) -> Datastore:
@@ -280,6 +284,10 @@ class MONAILabelApp:
                 MONAILabelError.INVALID_INPUT,
                 f"Inference Task is not Initialized. There is no model '{model}' available",
             )
+
+        request["multi_file"] = self.multi_file
+        request["multichannel"] = self.multichannel
+        request["input_channels"] = self.input_channels
 
         request = copy.deepcopy(request)
         request["description"] = task.description
@@ -429,6 +437,11 @@ class MONAILabelApp:
                 MONAILabelError.INVALID_INPUT,
                 f"Train Task is not Initialized. There is no model '{model}' available; {request}",
             )
+
+        # 4D image support, send train task information regarding data
+        request["multi_file"] = self.multi_file
+        request["multichannel"] = self.multichannel
+        request["input_channels"] = self.input_channels
 
         request = copy.deepcopy(request)
         result = task(request, self.datastore())

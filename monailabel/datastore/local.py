@@ -102,9 +102,11 @@ class LocalDatastore(Datastore):
         images_dir: str = ".",
         labels_dir: str = "labels",
         datastore_config: str = "datastore_v2.json",
-        extensions=("*.nii.gz", "*.nii"),
+        extensions=("*.nii.gz", "*.nii", "*.nrrd"),
         auto_reload=False,
         read_only=False,
+        multichannel=False,
+        multi_file=False,
     ):
         """
         Creates a `LocalDataset` object
@@ -124,6 +126,8 @@ class LocalDatastore(Datastore):
         self._ignore_event_config = False
         self._config_ts = 0
         self._auto_reload = auto_reload
+        self._multichannel = multichannel
+        self._multi_file = multi_file
 
         logging.getLogger("filelock").setLevel(logging.ERROR)
 
@@ -255,6 +259,12 @@ class LocalDatastore(Datastore):
         if not full_path:
             ds = json.loads(json.dumps(ds).replace(f"{self._datastore_path.rstrip(os.pathsep)}{os.pathsep}", ""))
         return ds
+
+    def get_is_multichannel(self) -> bool:
+        return self._multichannel
+
+    def get_is_multi_file(self) -> bool:
+        return self._multi_file
 
     def get_image(self, image_id: str, params=None) -> Any:
         """

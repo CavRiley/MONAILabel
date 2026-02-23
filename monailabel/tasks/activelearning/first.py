@@ -35,5 +35,13 @@ class First(Strategy):
         images.sort()
         image = images[0]
 
+        # If the datastore contains multichannel images send the multichannel flag to ensure images are loaded as sequences
+        if datastore.get_is_multichannel():
+            return {"id": image, "multichannel": True}
+
+        # If the datastore is multi_file, each sample has a directory with multiple images
+        if datastore.get_is_multi_file():
+            return {"id": image, "multi_file": True}
+
         logger.info(f"First: Selected Image: {image}")
         return {"id": image}

@@ -307,12 +307,18 @@ def main():
     parser.add_argument("-s", "--studies", default=studies)
     parser.add_argument("-m", "--model", default="segmentation")
     parser.add_argument("-t", "--test", default="batch_infer", choices=("train", "infer", "batch_infer"))
+    parser.add_argument("-multi", "--multichannel", default=False)
+    parser.add_argument("-c", "--input_channels", default=1)
+    parser.add_argument("-multif", "--multi_file", default=False)
     args = parser.parse_args()
 
     app_dir = os.path.dirname(__file__)
     studies = args.studies
     conf = {
         "models": args.model,
+        "multichannel": args.multichannel,
+        "input_channels": args.input_channels,
+        "multi_file": args.multi_file,
         "preload": "false",
     }
 
