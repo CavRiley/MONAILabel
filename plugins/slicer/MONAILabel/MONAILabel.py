@@ -1309,11 +1309,49 @@ class MONAILabelWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             node_name = sample.get("PatientID", sample.get("name", image_id))
             checksum = sample.get("checksum")
             local_exists = image_file and os.path.exists(image_file)
+            multichannel: bool = bool(sample.get("multichannel", False))
+            multi_file: bool = bool(sample.get("multi_file", False))
 
             logging.info(f"Check if file exists/shared locally: {image_file} => {local_exists}")
             if local_exists:
-                self._volumeNode = slicer.util.loadVolume(image_file)
-                self._volumeNode.SetName(node_name)
+                if multichannel:
+                    # For multichannel images, NOTE: slicer does not like multichannel nifti images
+                    # from https://github.com/Project-MONAI/MONAILabel/issues/241#issuecomment-1497788857
+                    volumeSequenceNode = slicer.util.loadSequence(image_file)
+                    volumeSequenceNode.SetName(node_name)
+                    # Get a volume node
+                    browserNode = slicer.modules.sequences.logic().GetFirstBrowserNodeForSequenceNode(
+                        volumeSequenceNode
+                    )
+                    browserNode.SetOverwriteProxyName(
+                        None, True
+                    )  # set the proxy node name based on the sequence node name
+                    self._volumeNode = browserNode.GetProxyNode(volumeSequenceNode)
+                else:
+                    if not multi_file:
+                        self._volumeNode = slicer.util.loadVolume(image_file)
+                        self._volumeNode.SetName(node_name)
+                    else:  # in the case the underlying dataset is multi_file, we load all the images in the directory
+                        dir_path = image_file
+                        if not os.path.isdir(dir_path):
+                            raise ValueError(f"multi_file=True but path is not a directory: {dir_path}")
+
+                        # get valid image paths
+                        entries = sorted(os.listdir(dir_path))
+                        image_paths = []
+                        for name in entries:
+                            full_path = os.path.join(dir_path, name)
+                            if os.path.isfile(full_path):
+                                image_paths.append(full_path)
+
+                        nodes = []
+                        for idx, image in enumerate(image_paths):
+                            image_base_name = os.path.basename(image)
+                            node = slicer.util.loadVolume(image)
+                            node.SetName(image_base_name)
+                            nodes.append(node)
+
+                        self._volumeNode = nodes[0]
             else:
                 download_uri = f"{self.serverUrl()}/datastore/image?image={quote_plus(image_id)}"
                 logging.info(download_uri)
