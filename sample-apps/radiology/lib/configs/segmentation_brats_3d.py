@@ -33,75 +33,50 @@ class Segmentation(TaskConfig):
     def init(self, name: str, model_dir: str, conf: Dict[str, str], planner: Any, **kwargs):
         super().init(name, model_dir, conf, planner, **kwargs)
 
-        # Labels
-        conf_labels = self.conf.get("labels")
-        self.labels = (
-            {label: idx for idx, label in enumerate(conf_labels.split(","), start=1)}
-            if conf_labels
-            else {
-                "prostate": 1,
-                # "background": 0
-                # "spleen": 1,
-                # "kidney_right": 2,
-                # "kidney_left": 3,
-                # "gallbladder": 4,
-                # "liver": 5,
-                # "stomach": 6,
-                # "aorta": 7,
-                # "inferior_vena_cava": 8,
-                # "portal_vein_and_splenic_vein": 9,
-                # "pancreas": 10,
-                # "adrenal_gland_right": 11,
-                # "adrenal_gland_left": 12,
-                # "lung_upper_lobe_left": 13,
-                # "lung_lower_lobe_left": 14,
-                # "lung_upper_lobe_right": 15,
-                # "lung_middle_lobe_right": 16,
-                # "lung_lower_lobe_right": 17,
-                # "esophagus": 42,
-                # "trachea": 43,
-                # "heart_myocardium": 44,
-                # "heart_atrium_left": 45,
-                # "heart_ventricle_left": 46,
-                # "heart_atrium_right": 47,
-                # "heart_ventricle_right": 48,
-                # "pulmonary_artery": 49,
-            }
-        )
+        # BraTS labels: 3 multi-label channels produced by ConvertToMultiChannelBasedOnBratsClassesd
+        #   Channel 0: TC  - Tumor Core        (label 2 OR label 3)
+        #   Channel 1: WT  - Whole Tumor       (label 1 OR label 2 OR label 3)
+        #   Channel 2: ET  - Enhancing Tumor   (label 2)
+        self.labels = {
+            "TC": 1,  # Tumor Core
+            "WT": 2,  # Whole Tumor
+            "ET": 3,  # Enhancing Tumor
+        }
 
         # Model Files
         self.path = [
             os.path.join(self.model_dir, f"pretrained_{name}.pt"),  # pretrained
-            os.path.join(self.model_dir, f"{name}.pt"),  # published
+            os.path.join(self.model_dir, f"{name}.pt"),             # published
         ]
 
-        # Download PreTrained Model
-        if not conf_labels and strtobool(self.conf.get("use_pretrained_model", "false")):
+        # Download PreTrained Model (optional)
+        if strtobool(self.conf.get("use_pretrained_model", "false")):
             url = f"{self.conf.get('pretrained_path', self.PRE_TRAINED_PATH)}"
-            url = f"{url}/radiology_segmentation_segresnet_multilabel.pt"
+            url = f"{url}/radiology_segmentation_segresnet_brats.pt"
             download_file(url, self.path[0])
 
-        # Remove pre-trained pt if user is using his/her custom labels.
-        if conf_labels:
-            remove_file(self.path[0])
+        # Spacing and ROI for BraTS (isotropic 1mm, large crop matching tutorial)
+        self.target_spacing = (1.0, 1.0, 1.0)
+        self.roi_size = (224, 224, 144)
 
-        self.target_spacing = (1.5, 1.5, 1.5)  # target space for image
-        # Setting ROI size - This is for the image padding
-        self.roi_size = (112, 112, 112)
-
+        # Number of input channels: 4 MRI modalities (FLAIR, T1, T1Gd, T2)
+        # when multi_file=True the LoadDirectoryImagesd loader stacks them;
+        # when multi_file=False the image file must already be a 4-channel volume.
         try:
-            input_channels = int(self.conf.get("input_channels", 1))
-        except ValueError or TypeError as e:
-            logger.debug("Error when converting input channels, setting to 1")
-            input_channels = 1
+            input_channels = int(self.conf.get("input_channels", 4))
+        except (ValueError, TypeError):
+            logger.warning("Could not parse input_channels, defaulting to 4")
+            input_channels = 4
 
-        # Network
-        SegResNet(
+        # Network — BraTS is a 3-output sigmoid multilabel task (TC, WT, ET).
+        # IMPORTANT: out_channels = 3, NOT len(labels)+1.
+        # FIX: result must be assigned to self.network (was missing in original).
+        self.network = SegResNet(
             blocks_down=(1, 2, 2, 4),
             blocks_up=(1, 1, 1),
             init_filters=16,
             in_channels=input_channels,
-            out_channels=len(self.labels) + 1,  # labels plus background,
+            out_channels=3,       # TC, WT, ET — sigmoid multilabel, no background channel
             dropout_prob=0.2,
         )
 
@@ -128,7 +103,7 @@ class Segmentation(TaskConfig):
             target_spacing=self.target_spacing,
             load_path=load_path,
             publish_path=self.path[1],
-            description="Train Segmentation Model",
+            description="Train BraTS Segmentation Model (TC/WT/ET multilabel)",
             labels=self.labels,
         )
         return task
