@@ -585,12 +585,23 @@ class LocalDatastore(Datastore):
     def _list_files(self, path, patterns):
         files = os.listdir(path)
 
-        if self._multi_file:
-            matching = [f for f in files if f.lower() not in EXCLUDED_FILES]
+        # if self._multi_file:
+        #     matching = [f for f in files if f.lower() not in EXCLUDED_FILES]
+        # else:
+        #     matching = [f for p in patterns for f in fnmatch.filter(files, p)]
+        #
+        # filtered = {os.path.basename(f): f for f in matching}
+        filtered = dict()
+        # TODO: Refactor
+        if not self._multi_file:
+            for pattern in patterns:
+                matching = fnmatch.filter(files, pattern)
+                for file in matching:
+                    filtered[os.path.basename(file)] = file
         else:
-            matching = [f for p in patterns for f in fnmatch.filter(files, p)]
-
-        filtered = {os.path.basename(f): f for f in matching}
+            for file in files:
+                if file.lower() not in ["labels", ".lock", "datastore_v2.json"]:
+                    filtered[os.path.basename(file)] = file
         return filtered
 
     def _reconcile_datastore(self):
@@ -624,22 +635,23 @@ class LocalDatastore(Datastore):
 
         ids = list(self._datastore.objects.keys())
         for file in local_files:
-            file_id, file_ext = self._to_id(file)
+            if self._multi_file:
+                # Directories have no extension — use the name as-is
+                file_id = file
+                file_ext_str = ""
+            else:
+                file_id, file_ext_str = self._to_id(file)
+
             if file_id not in ids:
                 logger.info(f"Adding New Image: {file_id} => {file}")
-
-                name = self._filename(file_id, file_ext)
+                name = self._filename(file_id, file_ext_str)
                 file_info = {
                     "ts": int(time.time()),
-                    # "checksum": file_checksum(os.path.join(self._datastore.image_path(), name)),
                     "name": name,
                 }
-
                 invalidate += 1
-                if not self._multi_file:
-                    self._datastore.objects[file_id] = ImageLabelModel(image=DataModel(info=file_info, ext=file_ext))
-                else:
-                    self._datastore.objects[file_id] = ImageLabelModel(image=DataModel(info=file_info, ext=""))
+                self._datastore.objects[file_id] = ImageLabelModel(name=DataModel(info=file_info, ext=file_ext_str))
+
         return invalidate
 
     def _add_non_existing_labels(self, tag) -> int:

@@ -93,21 +93,18 @@ class Segmentation(BasicTrainTask):
                                LoadDirectoryImagesd into a (4, H, W, D) tensor
         """
         channels = context.input_channels
-        multi_file = strtobool(str(context.multi_file))  # ← coerce safely
-        logger.info(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
-        print(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
+        # multi_file = strtobool(str(context.multi_file))  # ← coerce safely
+        # logger.info(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
+        # print(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
 
         return [
+            LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
             LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
-            (
-                LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
-                if not multi_file
-                else LoadDirectoryImagesd(
-                    keys="image",
-                    target_spacing=self.target_spacing,
-                    channels=channels,
-                )
-            ),
+            # (
+            #     LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
+            #     if context.multi_file is False
+            #     else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels)
+            # ),
             # ConvertToMultiChannelBasedOnBratsClassesd converts the integer label map
             # to a 3-channel binary tensor: [TC, WT, ET].
             ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
@@ -151,21 +148,18 @@ class Segmentation(BasicTrainTask):
 
     def val_pre_transforms(self, context: Context):
         channels = context.input_channels
-        multi_file = strtobool(str(context.multi_file))  # ← same fix
-        logger.info(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
-
-        print(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
+        # multi_file = strtobool(str(context.multi_file))  # ← same fix
+        # logger.info(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
+        #
+        # print(f"\n\n Usingh {channels} and multi_file: {multi_file}\n\n")
         return [
+            LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels),
             LoadImaged(keys="label", reader="ITKReader", ensure_channel_first=True),
-            (
-                LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
-                if not multi_file
-                else LoadDirectoryImagesd(
-                    keys="image",
-                    target_spacing=self.target_spacing,
-                    channels=channels,
-                )
-            ),
+            # (
+            #     LoadImaged(keys="image", reader="ITKReader", ensure_channel_first=True)
+            #     if context.multi_file is False
+            #     else LoadDirectoryImagesd(keys="image", target_spacing=self.target_spacing, channels=channels)
+            # ),
             ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
             EnsureTyped(keys=["image", "label"]),
             Orientationd(keys=["image", "label"], axcodes="RAS"),
